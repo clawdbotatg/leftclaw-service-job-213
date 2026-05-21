@@ -104,13 +104,16 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
 
     event PositionClosed(uint256 indexed positionId, address indexed closedBy, uint256 usdcRefunded, uint256 tokenRefunded);
     event TokenWithdrawn(uint256 indexed positionId, address indexed owner, uint256 amount);
-    event BurnExecuted(uint256 indexed executor, uint256 usdcIn, uint256 clawdBurned);
+    event BurnExecuted(address indexed executor, uint256 usdcIn, uint256 clawdBurned);
     event ProtocolFeesWithdrawn(address indexed to, uint256 amount);
     event BurnSwapPathUpdated(bytes newPath);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Errors
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice amountPerSwap minimum: 1 USDC (1_000_000 = 6 decimals). Ensures fee buckets get ≥1 unit each.
+    uint256 public constant MIN_AMOUNT_PER_SWAP = 1_000_000;
 
     error InvalidAmount();
     error InvalidInterval();
@@ -167,7 +170,7 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
         bytes calldata swapPath,
         uint256 slippageBps
     ) external whenNotPaused nonReentrant returns (uint256 positionId) {
-        if (amountPerSwap == 0 || totalUSDC < amountPerSwap) revert InvalidAmount();
+        if (amountPerSwap < MIN_AMOUNT_PER_SWAP || totalUSDC < amountPerSwap) revert InvalidAmount();
         if (intervalInEpochs == 0) revert InvalidInterval();
 
         // Validate path layout: 20 (token) + N * (3 fee + 20 token), minimum 1 hop → 43 bytes.
@@ -231,7 +234,7 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
      * @notice Best-effort batch execution. Skips positions that aren't ripe / are paused / fail.
      * @return results Array of tokenReceived values (0 entries indicate a skip or failure).
      */
-    function executeBatch(uint256[] calldata positionIds) external nonReentrant returns (uint256[] memory results) {
+    function executeBatch(uint256[] calldata positionIds) external whenNotPaused nonReentrant returns (uint256[] memory results) {
         uint256 len = positionIds.length;
         if (len == 0) revert EmptyBatch();
         results = new uint256[](len);
@@ -241,7 +244,6 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
         // through try/catch so a single bad position can't brick the batch.
         for (uint256 i = 0; i < len; i++) {
             uint256 positionId = positionIds[i];
-            if (paused()) break; // honor pause mid-batch
             Position storage p = positions[positionId];
             if (!p.active) continue;
             if (!isRipe(positionId)) continue;
@@ -333,7 +335,7 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
         });
         clawdBurned = ISwapRouter(SWAP_ROUTER).exactInput(params);
 
-        emit BurnExecuted(uint256(uint160(msg.sender)), amountIn, clawdBurned);
+        emit BurnExecuted(msg.sender, amountIn, clawdBurned);
     }
 
     /// @notice Owner withdraws accrued protocol fees.
