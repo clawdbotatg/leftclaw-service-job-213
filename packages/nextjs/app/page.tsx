@@ -1,13 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AddressInput } from "@scaffold-ui/components";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { Address, AddressInput } from "@scaffold-ui/components";
 import type { NextPage } from "next";
-import { type Address, formatUnits, isAddress, parseUnits } from "viem";
+import { type Address as AddressType, formatUnits, isAddress, parseUnits } from "viem";
 import { base } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
 import { ClientOnly } from "~~/components/ClientOnly";
-import { useScaffoldReadContract, useScaffoldWriteContract, useTargetNetwork } from "~~/hooks/scaffold-eth";
+import {
+  useScaffoldReadContract,
+  useScaffoldWriteContract,
+  useTargetNetwork,
+  useWriteAndOpen,
+} from "~~/hooks/scaffold-eth";
 import { CLAWD_DCA_ADDRESS, FEE_TIERS, INTERVAL_OPTIONS, encodeV3Path, feeLabel } from "~~/utils/clawd";
 import { notification } from "~~/utils/scaffold-eth";
 
@@ -20,6 +26,8 @@ const HomeInner = () => {
   const { address: connectedAddress, isConnected } = useAccount();
   const { targetNetwork } = useTargetNetwork();
   const { switchChain } = useSwitchChain();
+  const { openConnectModal } = useConnectModal();
+  const { writeAndOpen } = useWriteAndOpen();
 
   const [targetToken, setTargetToken] = useState<string>("");
   const [hops, setHops] = useState<Hop[]>([{ token: "", fee: 3000 }]);
@@ -99,15 +107,15 @@ const HomeInner = () => {
 
   const encodedSwapPath = useMemo<`0x${string}` | null>(() => {
     if (!isAddress(targetToken)) return null;
-    const tokens: Address[] = ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"];
+    const tokens: AddressType[] = ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"];
     const fees: number[] = [];
     for (const hop of hops) {
       if (!isAddress(hop.token)) return null;
       fees.push(hop.fee);
-      tokens.push(hop.token as Address);
+      tokens.push(hop.token as AddressType);
     }
     fees.push(finalFee);
-    tokens.push(targetToken as Address);
+    tokens.push(targetToken as AddressType);
     try {
       return encodeV3Path(tokens, fees);
     } catch {
@@ -137,10 +145,12 @@ const HomeInner = () => {
     if (approvalSubmitting || approvalCooldown) return;
     try {
       setApprovalSubmitting(true);
-      await approveUsdc({
-        functionName: "approve",
-        args: [CLAWD_DCA_ADDRESS, totalUsdcWei],
-      });
+      await writeAndOpen(() =>
+        approveUsdc({
+          functionName: "approve",
+          args: [CLAWD_DCA_ADDRESS, totalUsdcWei],
+        }),
+      );
       notification.success("USDC approved");
       setApprovalCooldown(true);
       setTimeout(() => setApprovalCooldown(false), 4000);
@@ -158,17 +168,19 @@ const HomeInner = () => {
       return;
     }
     try {
-      const txHash = await writeDca({
-        functionName: "createPosition",
-        args: [
-          totalUsdcWei,
-          amountPerSwapWei,
-          BigInt(intervalEpochs),
-          targetToken as Address,
-          encodedSwapPath,
-          BigInt(slippageBps),
-        ],
-      });
+      const txHash = await writeAndOpen(() =>
+        writeDca({
+          functionName: "createPosition",
+          args: [
+            totalUsdcWei,
+            amountPerSwapWei,
+            BigInt(intervalEpochs),
+            targetToken as AddressType,
+            encodedSwapPath,
+            BigInt(slippageBps),
+          ],
+        }),
+      );
       if (txHash) {
         notification.success("Position created! Check /positions for details.");
       }
@@ -189,6 +201,9 @@ const HomeInner = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">CLAWD DCA V3</h1>
           <p className="text-base-content/70">Permissionless DCA engine on Base. Auto-swap USDC into any Base token.</p>
+          <p className="text-sm text-base-content/50 mt-1">
+            Contract: <Address address="0x096f3db3c7910061d798a2e2865844a24d13bf9c" />
+          </p>
         </div>
 
         <div className="card bg-base-100 shadow-xl">
@@ -347,7 +362,9 @@ const HomeInner = () => {
             {/* Action button (4-state wallet flow) */}
             <div className="card-actions justify-end mt-4">
               {!isConnected ? (
-                <p className="text-base-content/70 self-center">Connect your wallet to continue.</p>
+                <button className="btn btn-primary" onClick={() => openConnectModal?.()}>
+                  Connect Wallet
+                </button>
               ) : isWrongNetwork ? (
                 <button className="btn btn-warning" onClick={() => switchChain({ chainId: base.id })}>
                   Switch to Base
@@ -358,15 +375,15 @@ const HomeInner = () => {
                   disabled={approvalSubmitting || approvalCooldown || totalUsdcWei === 0n}
                   onClick={handleApprove}
                 >
-                  {approvalSubmitting
-                    ? "Approving…"
-                    : approvalCooldown
-                      ? "Waiting…"
-                      : `Approve ${totalUsdc || "0"} USDC`}
+                  {approvalSubmitting || approvalCooldown ? (
+                    <span className="loading loading-spinner loading-sm" />
+                  ) : (
+                    `Approve ${totalUsdc || "0"} USDC`
+                  )}
                 </button>
               ) : (
                 <button className="btn btn-primary" disabled={isMining || formErrors.length > 0} onClick={handleCreate}>
-                  {isMining ? "Creating…" : "Create Position"}
+                  {isMining ? <span className="loading loading-spinner loading-sm" /> : "Create Position"}
                 </button>
               )}
             </div>

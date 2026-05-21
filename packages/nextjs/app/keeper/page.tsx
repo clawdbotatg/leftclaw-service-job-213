@@ -7,7 +7,7 @@ import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
 import { ClientOnly } from "~~/components/ClientOnly";
 import deployedContracts from "~~/contracts/deployedContracts";
-import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useScaffoldReadContract, useScaffoldWriteContract, useWriteAndOpen } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
 
 type Position = {
@@ -74,16 +74,19 @@ const KeeperInner = () => {
   }, [ripeIds, ripePositionsRaw]);
 
   const { writeContractAsync, isMining } = useScaffoldWriteContract({ contractName: "CLAWDdcaV3" });
+  const { writeAndOpen } = useWriteAndOpen();
   const [executingId, setExecutingId] = useState<bigint | null>(null);
   const [batchExecuting, setBatchExecuting] = useState(false);
 
   const handleExecute = async (id: bigint) => {
     try {
       setExecutingId(id);
-      await writeContractAsync({
-        functionName: "executeDCA",
-        args: [id],
-      });
+      await writeAndOpen(() =>
+        writeContractAsync({
+          functionName: "executeDCA",
+          args: [id],
+        }),
+      );
       notification.success(`Executed position #${id.toString()}`);
       refetchRipe();
       refetchRipePositions();
@@ -98,10 +101,12 @@ const KeeperInner = () => {
     if (ripeIds.length === 0) return;
     try {
       setBatchExecuting(true);
-      await writeContractAsync({
-        functionName: "executeBatch",
-        args: [ripeIds],
-      });
+      await writeAndOpen(() =>
+        writeContractAsync({
+          functionName: "executeBatch",
+          args: [ripeIds],
+        }),
+      );
       notification.success(`Executed ${ripeIds.length} positions`);
       refetchRipe();
       refetchRipePositions();
@@ -139,7 +144,11 @@ const KeeperInner = () => {
             disabled={ripeIds.length === 0 || batchExecuting || isMining}
             onClick={handleBatch}
           >
-            {batchExecuting ? "Batch executing…" : `Batch Execute (${ripeIds.length})`}
+            {batchExecuting ? (
+              <span className="loading loading-spinner loading-sm" />
+            ) : (
+              `Batch Execute (${ripeIds.length})`
+            )}
           </button>
         </div>
 
@@ -174,7 +183,7 @@ const KeeperInner = () => {
                         disabled={executingId === id || isMining}
                         onClick={() => handleExecute(id)}
                       >
-                        {executingId === id ? "Executing…" : "Execute"}
+                        {executingId === id ? <span className="loading loading-spinner loading-sm" /> : "Execute"}
                       </button>
                     </div>
                   </div>

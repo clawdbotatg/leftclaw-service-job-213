@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { NextPage } from "next";
 import { formatUnits } from "viem";
 import { ClientOnly } from "~~/components/ClientOnly";
-import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useScaffoldReadContract, useScaffoldWriteContract, useWriteAndOpen } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
 
 const BurnInner = () => {
@@ -14,14 +14,17 @@ const BurnInner = () => {
   });
 
   const { writeContractAsync } = useScaffoldWriteContract({ contractName: "CLAWDdcaV3" });
+  const { writeAndOpen } = useWriteAndOpen();
   const [busy, setBusy] = useState(false);
 
   const handleBurn = async () => {
     try {
       setBusy(true);
-      await writeContractAsync({
-        functionName: "executeBurn",
-      });
+      await writeAndOpen(() =>
+        writeContractAsync({
+          functionName: "executeBurn",
+        }),
+      );
       notification.success("Burn executed — CLAWD burned!");
       refetch();
     } catch (err: any) {
@@ -57,7 +60,7 @@ const BurnInner = () => {
               disabled={busy || (burnBalance as bigint | undefined) === 0n}
               onClick={handleBurn}
             >
-              {busy ? "Burning…" : "Execute Burn"}
+              {busy ? <span className="loading loading-spinner loading-sm" /> : "Execute Burn"}
             </button>
           </div>
         </div>
