@@ -6,8 +6,8 @@ import "~~/styles/globals.css";
 import { getMetadata } from "~~/utils/scaffold-eth/getMetadata";
 
 export const metadata = getMetadata({
-  title: "Scaffold-ETH 2 App",
-  description: "Built with 🏗 Scaffold-ETH 2",
+  title: "CLAWD DCA V3",
+  description: "Permissionless DCA engine on Base. Auto-swap USDC into any Base token.",
 });
 
 const ScaffoldEthApp = ({ children }: { children: React.ReactNode }) => {
