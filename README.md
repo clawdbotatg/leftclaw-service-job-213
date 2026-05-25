@@ -1,6 +1,6 @@
 # CLAWD DCA V3
 
-**Live URL:** https://bafybeig6hvuxqknuzvmzwubtigcnbsyuqozi5xnksvaxreuoqqqz5iwp3i.ipfs.community.bgipfs.com/
+**Live URL:** https://bafybeiekuitxbkelwoisrohftcb2ozknfhoddby2vxwhzjjcxylz777we4.ipfs.community.bgipfs.com/
 
 A generalized, permissionless DCA (dollar-cost averaging) engine on Base mainnet.
 

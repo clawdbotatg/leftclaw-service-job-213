@@ -1,34 +1,33 @@
-# Feature Job #224 — Fix "Swap path could not be encoded"
+# Feature Job #225 — Auto-routing via WETH
 
-## Root cause
-
-`page.tsx` initialises `hops` state as `[{ token: "", fee: 3000 }]` — one empty
-intermediate hop. The `encodedSwapPath` memo returns `null` if any hop token is
-not a valid address. The Remove button is `disabled={hops.length === 1}`, so the
-user can never reduce to zero hops.
-
-Most positions are direct USDC → targetToken swaps with no intermediary, so the
-path fails to encode every time a new user opens the form.
-
-## Fix (minimal, two lines changed)
-
-1. `packages/nextjs/app/page.tsx` line 33:
-   Change initial state from `[{ token: "", fee: 3000 }]` → `[]`
-
-2. `packages/nextjs/app/page.tsx` line ~248:
-   Remove `disabled={hops.length === 1}` so users can remove all intermediate
-   hops (going back to 0 is now valid).
-
-## Why this works
-
-When `hops = []`:
-- `encodedSwapPath` loop never runs → `tokens = [USDC, targetToken]`, `fees = [finalFee]`
-- `encodeV3Path([USDC, target], [finalFee])` → valid 43-byte path
-- Contract path-length check: `43 >= 43 && (43-20) % 23 == 0` ✓
-- `pathPreview` renders `USDC → 0.3% → TARGET` correctly (loop over empty array)
-
-No changes to `encodeV3Path`, `encodedSwapPath`, or contract interaction code needed.
+## Request
+"We want our DCA contract to have auto-routing via WETH built into every swap automatically, not a manual thing the user has to add."
 
 ## Scope
 
-Only `packages/nextjs/app/page.tsx`. Build + typecheck + redeploy to BGIPFS.
+### Contract: `packages/foundry/contracts/CLAWDdcaV3.sol`
+- Extract the core of `createPosition` into `_createPositionFromPath` internal helper.
+- Add `createPositionViaWETH(totalUSDC, amountPerSwap, intervalInEpochs, targetToken, usdcWethFee, wethTargetFee, slippageBps)`:
+  - Builds path on-chain: `abi.encodePacked(USDC, usdcWethFee, WETH, wethTargetFee, targetToken)`
+  - Edge case: if `targetToken == WETH`, builds single-hop `abi.encodePacked(USDC, usdcWethFee, WETH)`.
+  - Validates fee params fit uint24; path validation reuses existing `_firstToken`/`_lastToken` helpers.
+  - Calls `_createPositionFromPath` (same flow as `createPosition`).
+- `createPosition` (unchanged API) — now delegates body to `_createPositionFromPath`.
+
+### ABI: `packages/nextjs/contracts/deployedContracts.ts`
+- Add `createPositionViaWETH` ABI entry manually (no redeploy in scope; customer confirms before complete).
+
+### Frontend: `packages/nextjs/app/page.tsx`
+- Add "Route via WETH (recommended)" toggle, default ON.
+- When ON: show two fee tier dropdowns (USDC→WETH default 500bps, WETH→target default 3000bps); hide manual hop builder.
+- When OFF: existing manual path builder unchanged.
+- Call `createPositionViaWETH` when toggle ON, `createPosition` when toggle OFF.
+- Update path preview to reflect auto-route.
+
+### Tests: `packages/foundry/test/CLAWDdcaV3.t.sol`
+- Add fork tests for `createPositionViaWETH` (two-hop path and WETH target edge case).
+
+## Notes
+- Customer asked: "Please do not complete the job until I give confirmation."
+- After push + BGIPFS deploy, post preview URL + PR summary and wait for their OK before calling complete.sh.
+- No contract redeployment coordinated here — customer reviews first; they control deployment timing.

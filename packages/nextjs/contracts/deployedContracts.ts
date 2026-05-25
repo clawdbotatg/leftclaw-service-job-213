@@ -299,6 +299,55 @@ const deployedContracts = {
         },
         {
           type: "function",
+          name: "createPositionViaWETH",
+          inputs: [
+            {
+              name: "totalUSDC",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "amountPerSwap",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "intervalInEpochs",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "targetToken",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "usdcWethFee",
+              type: "uint24",
+              internalType: "uint24",
+            },
+            {
+              name: "wethTargetFee",
+              type: "uint24",
+              internalType: "uint24",
+            },
+            {
+              name: "slippageBps",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "positionId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
           name: "currentEpoch",
           inputs: [],
           outputs: [

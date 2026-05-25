@@ -120,6 +120,7 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
     error InvalidPath();
     error InvalidSlippage();
     error PathTokenMismatch();
+    error InvalidTargetToken();
     error NotPositionOwner();
     error NotOwnerOrPositionOwner();
     error PositionInactive();
@@ -154,7 +155,7 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Open a new DCA position.
+     * @notice Open a new DCA position with a manually encoded Uniswap V3 swap path.
      * @param totalUSDC Initial USDC to lock in the position. Pulled from msg.sender.
      * @param amountPerSwap USDC spent per execution (must be ≤ totalUSDC).
      * @param intervalInEpochs Number of 3-hour epochs between executions (≥ 1).
@@ -170,13 +171,64 @@ contract CLAWDdcaV3 is Ownable2Step, Pausable, ReentrancyGuard {
         bytes calldata swapPath,
         uint256 slippageBps
     ) external whenNotPaused nonReentrant returns (uint256 positionId) {
-        if (amountPerSwap < MIN_AMOUNT_PER_SWAP || totalUSDC < amountPerSwap) revert InvalidAmount();
-        if (intervalInEpochs == 0) revert InvalidInterval();
-
         // Validate path layout: 20 (token) + N * (3 fee + 20 token), minimum 1 hop → 43 bytes.
         if (swapPath.length < 43 || (swapPath.length - 20) % 23 != 0) revert InvalidPath();
         if (_firstToken(swapPath) != USDC) revert PathTokenMismatch();
         if (_lastToken(swapPath) != targetToken) revert PathTokenMismatch();
+
+        return _createPositionFromPath(totalUSDC, amountPerSwap, intervalInEpochs, targetToken, swapPath, slippageBps);
+    }
+
+    /**
+     * @notice Open a new DCA position that automatically routes every swap through WETH.
+     * @dev Builds the Uniswap V3 path on-chain — users never have to construct it manually.
+     *      If targetToken is WETH itself, a single-hop USDC → WETH path is used instead.
+     * @param totalUSDC Initial USDC to lock in the position. Pulled from msg.sender.
+     * @param amountPerSwap USDC spent per execution (must be ≤ totalUSDC).
+     * @param intervalInEpochs Number of 3-hour epochs between executions (≥ 1).
+     * @param targetToken The token the user wants to accrue.
+     * @param usdcWethFee Uniswap V3 fee tier for the USDC → WETH hop (e.g. 500 = 0.05%).
+     * @param wethTargetFee Uniswap V3 fee tier for the WETH → targetToken hop (ignored when targetToken == WETH).
+     * @param slippageBps Per-swap slippage tolerance. 0 → DEFAULT_SLIPPAGE_BPS; capped at MAX_SLIPPAGE_BPS.
+     */
+    function createPositionViaWETH(
+        uint256 totalUSDC,
+        uint256 amountPerSwap,
+        uint256 intervalInEpochs,
+        address targetToken,
+        uint24 usdcWethFee,
+        uint24 wethTargetFee,
+        uint256 slippageBps
+    ) external whenNotPaused nonReentrant returns (uint256 positionId) {
+        if (targetToken == address(0)) revert InvalidTargetToken();
+        if (targetToken == USDC) revert InvalidTargetToken();
+
+        bytes memory swapPath;
+        if (targetToken == WETH) {
+            // Single hop: USDC → WETH
+            swapPath = abi.encodePacked(USDC, usdcWethFee, WETH);
+        } else {
+            // Two hops: USDC → WETH → targetToken
+            swapPath = abi.encodePacked(USDC, usdcWethFee, WETH, wethTargetFee, targetToken);
+        }
+
+        return _createPositionFromPath(totalUSDC, amountPerSwap, intervalInEpochs, targetToken, swapPath, slippageBps);
+    }
+
+    /**
+     * @dev Shared position-creation logic used by both createPosition and createPositionViaWETH.
+     *      Caller is responsible for validating the path before calling this.
+     */
+    function _createPositionFromPath(
+        uint256 totalUSDC,
+        uint256 amountPerSwap,
+        uint256 intervalInEpochs,
+        address targetToken,
+        bytes memory swapPath,
+        uint256 slippageBps
+    ) internal returns (uint256 positionId) {
+        if (amountPerSwap < MIN_AMOUNT_PER_SWAP || totalUSDC < amountPerSwap) revert InvalidAmount();
+        if (intervalInEpochs == 0) revert InvalidInterval();
 
         uint256 effectiveSlippage = slippageBps;
         if (effectiveSlippage == 0) effectiveSlippage = DEFAULT_SLIPPAGE_BPS;
