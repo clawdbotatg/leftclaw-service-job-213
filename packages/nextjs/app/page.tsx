@@ -30,7 +30,7 @@ const HomeInner = () => {
   const { writeAndOpen } = useWriteAndOpen();
 
   const [targetToken, setTargetToken] = useState<string>("");
-  const [hops, setHops] = useState<Hop[]>([{ token: "", fee: 3000 }]);
+  const [hops, setHops] = useState<Hop[]>([]);
   // The "hops" array represents [fee_USDC->hop0, hop0_addr] ... last hop -> targetToken.
   // We model intermediate tokens; the FIRST fee is USDC -> hops[0].token, then hops[0].fee is hops[0].token -> hops[1].token (or targetToken if last).
   // To keep it simple: we treat each entry as (intermediate token, fee tier USDC->thisToken if first / prevToken->thisToken).
@@ -246,7 +246,7 @@ const HomeInner = () => {
                       type="button"
                       className="btn btn-sm btn-ghost"
                       onClick={() => removeHop(idx)}
-                      disabled={hops.length === 1}
+                      disabled={false}
                     >
                       Remove
                     </button>

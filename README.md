@@ -1,5 +1,7 @@
 # CLAWD DCA V3
 
+**Live URL:** https://bafybeig6hvuxqknuzvmzwubtigcnbsyuqozi5xnksvaxreuoqqqz5iwp3i.ipfs.community.bgipfs.com/
+
 A generalized, permissionless DCA (dollar-cost averaging) engine on Base mainnet.
 
 Users create positions that auto-swap USDC into any Base token via Uniswap V3 on a fixed epoch schedule. Anyone can run the keeper to execute ripe positions and earn a fee. Protocol fees accumulate in USDC and can be permissionlessly burned by swapping into CLAWD.
