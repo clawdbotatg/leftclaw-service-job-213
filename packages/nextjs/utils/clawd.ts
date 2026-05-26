@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 
-export const CLAWD_DCA_ADDRESS = "0x096f3db3c7910061d798a2e2865844a24d13bf9c" as const;
+export const CLAWD_DCA_ADDRESS = "0xdb5da5b9c55d5fc72eb19692ab41aabbc46278ac" as const;
 export const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 export const WETH_ADDRESS = "0x4200000000000000000000000000000000000006" as const;
 export const EPOCH_DURATION_SECONDS = 10800n; // 3 hours

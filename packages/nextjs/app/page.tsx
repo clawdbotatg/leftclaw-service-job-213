@@ -241,7 +241,7 @@ const HomeInner = () => {
           <h1 className="text-4xl font-bold mb-2">CLAWD DCA V3</h1>
           <p className="text-base-content/70">Permissionless DCA engine on Base. Auto-swap USDC into any Base token.</p>
           <p className="text-sm text-base-content/50 mt-1">
-            Contract: <Address address="0x096f3db3c7910061d798a2e2865844a24d13bf9c" />
+            Contract: <Address address="0xdb5da5b9c55d5fc72eb19692ab41aabbc46278ac" />
           </p>
         </div>
 
