@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   8453: {
     CLAWDdcaV3: {
-      address: "0x096f3db3c7910061d798a2e2865844a24d13bf9c",
+      address: "0xdb5da5b9c55d5fc72eb19692ab41aabbc46278ac",
       abi: [
         {
           type: "constructor",
@@ -1123,6 +1123,11 @@ const deployedContracts = {
         },
         {
           type: "error",
+          name: "InvalidTargetToken",
+          inputs: [],
+        },
+        {
+          type: "error",
           name: "NotOwnerOrPositionOwner",
           inputs: [],
         },
@@ -1196,7 +1201,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 46298902,
+      deployedOnBlock: 46483901,
     },
   },
 } as const;
