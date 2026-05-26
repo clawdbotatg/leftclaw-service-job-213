@@ -1,33 +1,28 @@
-# Feature Job #225 — Auto-routing via WETH
+# Feature Job #225 — Auto-routing via WETH (always on)
 
 ## Request
 "We want our DCA contract to have auto-routing via WETH built into every swap automatically, not a manual thing the user has to add."
 
-## Scope
+## Previous agent work (already complete)
+- Contract: `createPositionViaWETH` added; `createPosition` still exists as advanced entrypoint.
+- Frontend: WETH routing toggle defaulted ON, with manual path builder as an off-state.
+- Tests: Fork tests for `createPositionViaWETH` added.
 
-### Contract: `packages/foundry/contracts/CLAWDdcaV3.sol`
-- Extract the core of `createPosition` into `_createPositionFromPath` internal helper.
-- Add `createPositionViaWETH(totalUSDC, amountPerSwap, intervalInEpochs, targetToken, usdcWethFee, wethTargetFee, slippageBps)`:
-  - Builds path on-chain: `abi.encodePacked(USDC, usdcWethFee, WETH, wethTargetFee, targetToken)`
-  - Edge case: if `targetToken == WETH`, builds single-hop `abi.encodePacked(USDC, usdcWethFee, WETH)`.
-  - Validates fee params fit uint24; path validation reuses existing `_firstToken`/`_lastToken` helpers.
-  - Calls `_createPositionFromPath` (same flow as `createPosition`).
-- `createPosition` (unchanged API) — now delegates body to `_createPositionFromPath`.
-
-### ABI: `packages/nextjs/contracts/deployedContracts.ts`
-- Add `createPositionViaWETH` ABI entry manually (no redeploy in scope; customer confirms before complete).
+## This session's scope — remove the toggle
+Client follow-up: they don't want a toggle — WETH routing should be the ONLY option in the UI.
 
 ### Frontend: `packages/nextjs/app/page.tsx`
-- Add "Route via WETH (recommended)" toggle, default ON.
-- When ON: show two fee tier dropdowns (USDC→WETH default 500bps, WETH→target default 3000bps); hide manual hop builder.
-- When OFF: existing manual path builder unchanged.
-- Call `createPositionViaWETH` when toggle ON, `createPosition` when toggle OFF.
-- Update path preview to reflect auto-route.
+- Remove `routeViaWeth` state, always treat as true.
+- Remove `hops`, `finalFee`, `addHop`, `removeHop`, `updateHop` state/helpers.
+- Remove `encodedSwapPath` useMemo.
+- Remove `Hop` type.
+- Simplify `pathPreview` to always show WETH route.
+- Simplify `formErrors` — no manual path validation.
+- Simplify `handleCreate` — always calls `createPositionViaWETH`.
+- Remove toggle checkbox and manual hop builder JSX.
 
-### Tests: `packages/foundry/test/CLAWDdcaV3.t.sol`
-- Add fork tests for `createPositionViaWETH` (two-hop path and WETH target edge case).
+### Contract + tests — no changes needed.
 
 ## Notes
-- Customer asked: "Please do not complete the job until I give confirmation."
-- After push + BGIPFS deploy, post preview URL + PR summary and wait for their OK before calling complete.sh.
-- No contract redeployment coordinated here — customer reviews first; they control deployment timing.
+- Customer: do NOT call complete.sh until they confirm.
+- After build + BGIPFS ship + push: post the preview URL and wait for OK.

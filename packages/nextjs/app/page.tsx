@@ -14,13 +14,8 @@ import {
   useTargetNetwork,
   useWriteAndOpen,
 } from "~~/hooks/scaffold-eth";
-import { CLAWD_DCA_ADDRESS, FEE_TIERS, INTERVAL_OPTIONS, WETH_ADDRESS, encodeV3Path, feeLabel } from "~~/utils/clawd";
+import { CLAWD_DCA_ADDRESS, FEE_TIERS, INTERVAL_OPTIONS, WETH_ADDRESS, feeLabel } from "~~/utils/clawd";
 import { notification } from "~~/utils/scaffold-eth";
-
-type Hop = {
-  token: string;
-  fee: number;
-};
 
 const HomeInner = () => {
   const { address: connectedAddress, isConnected } = useAccount();
@@ -30,16 +25,8 @@ const HomeInner = () => {
   const { writeAndOpen } = useWriteAndOpen();
 
   const [targetToken, setTargetToken] = useState<string>("");
-  const [routeViaWeth, setRouteViaWeth] = useState<boolean>(true);
   const [usdcWethFee, setUsdcWethFee] = useState<number>(500);
   const [wethTargetFee, setWethTargetFee] = useState<number>(3000);
-  const [hops, setHops] = useState<Hop[]>([]);
-  // The "hops" array represents [fee_USDC->hop0, hop0_addr] ... last hop -> targetToken.
-  // We model intermediate tokens; the FIRST fee is USDC -> hops[0].token, then hops[0].fee is hops[0].token -> hops[1].token (or targetToken if last).
-  // To keep it simple: we treat each entry as (intermediate token, fee tier USDC->thisToken if first / prevToken->thisToken).
-  // Actually, simpler model: hops = list of intermediate tokens with fee tier connecting USDC -> tok0 -> tok1 -> ... -> targetToken.
-  // The fee on hop[i] is the fee tier between hop[i-1] (or USDC if i==0) and hop[i]. We also need a fee tier between the last hop and targetToken.
-  const [finalFee, setFinalFee] = useState<number>(3000);
 
   const [amountPerSwap, setAmountPerSwap] = useState<string>("1");
   const [totalUsdc, setTotalUsdc] = useState<string>("10");
@@ -95,44 +82,14 @@ const HomeInner = () => {
     return Math.floor(n * 100);
   }, [slippagePct]);
 
-  // Build path preview
+  // Build path preview — always via WETH
   const pathPreview = useMemo(() => {
-    if (routeViaWeth) {
-      const targetLabel = targetToken ? `${targetToken.slice(0, 6)}…${targetToken.slice(-4)}` : "TARGET";
-      if (isAddress(targetToken) && targetToken.toLowerCase() === WETH_ADDRESS.toLowerCase()) {
-        return `USDC → ${feeLabel(usdcWethFee)} → WETH`;
-      }
-      return `USDC → ${feeLabel(usdcWethFee)} → WETH → ${feeLabel(wethTargetFee)} → ${targetLabel}`;
+    const targetLabel = targetToken ? `${targetToken.slice(0, 6)}…${targetToken.slice(-4)}` : "TARGET";
+    if (isAddress(targetToken) && targetToken.toLowerCase() === WETH_ADDRESS.toLowerCase()) {
+      return `USDC → ${feeLabel(usdcWethFee)} → WETH`;
     }
-    const labels: string[] = ["USDC"];
-    for (let i = 0; i < hops.length; i++) {
-      labels.push(feeLabel(hops[i].fee));
-      const tok = hops[i].token.trim();
-      labels.push(tok ? `${tok.slice(0, 6)}…${tok.slice(-4)}` : "???");
-    }
-    labels.push(feeLabel(finalFee));
-    labels.push(targetToken ? `${targetToken.slice(0, 6)}…${targetToken.slice(-4)}` : "TARGET");
-    return labels.join(" → ");
-  }, [routeViaWeth, usdcWethFee, wethTargetFee, hops, finalFee, targetToken]);
-
-  const encodedSwapPath = useMemo<`0x${string}` | null>(() => {
-    if (routeViaWeth) return null; // not needed — contract builds path for createPositionViaWETH
-    if (!isAddress(targetToken)) return null;
-    const tokens: AddressType[] = ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"];
-    const fees: number[] = [];
-    for (const hop of hops) {
-      if (!isAddress(hop.token)) return null;
-      fees.push(hop.fee);
-      tokens.push(hop.token as AddressType);
-    }
-    fees.push(finalFee);
-    tokens.push(targetToken as AddressType);
-    try {
-      return encodeV3Path(tokens, fees);
-    } catch {
-      return null;
-    }
-  }, [routeViaWeth, hops, finalFee, targetToken]);
+    return `USDC → ${feeLabel(usdcWethFee)} → WETH → ${feeLabel(wethTargetFee)} → ${targetLabel}`;
+  }, [usdcWethFee, wethTargetFee, targetToken]);
 
   // ---- Validation ----
   const formErrors = useMemo<string[]>(() => {
@@ -141,18 +98,11 @@ const HomeInner = () => {
     if (amountPerSwapWei < 1_000_000n) errors.push("Amount per swap must be >= 1 USDC.");
     if (totalUsdcWei < amountPerSwapWei) errors.push("Total USDC must be >= amount per swap.");
     if (slippageBps <= 0 || slippageBps > 1000) errors.push("Slippage must be > 0% and <= 10%.");
-    if (routeViaWeth) {
-      if (isAddress(targetToken) && targetToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913") {
-        errors.push("Target token cannot be USDC.");
-      }
-    } else {
-      for (const hop of hops) {
-        if (hop.token && !isAddress(hop.token)) errors.push("All hop tokens must be valid addresses.");
-      }
-      if (!encodedSwapPath) errors.push("Swap path could not be encoded.");
+    if (isAddress(targetToken) && targetToken.toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913") {
+      errors.push("Target token cannot be USDC.");
     }
     return errors;
-  }, [routeViaWeth, targetToken, amountPerSwapWei, totalUsdcWei, slippageBps, hops, encodedSwapPath]);
+  }, [targetToken, amountPerSwapWei, totalUsdcWei, slippageBps]);
 
   // ---- Approval / wallet flow ----
   const isWrongNetwork = isConnected && targetNetwork.id !== base.id;
@@ -185,41 +135,20 @@ const HomeInner = () => {
       return;
     }
     try {
-      let txHash: string | undefined;
-      if (routeViaWeth) {
-        txHash = await writeAndOpen(() =>
-          writeDca({
-            functionName: "createPositionViaWETH",
-            args: [
-              totalUsdcWei,
-              amountPerSwapWei,
-              BigInt(intervalEpochs),
-              targetToken as AddressType,
-              usdcWethFee,
-              wethTargetFee,
-              BigInt(slippageBps),
-            ],
-          }),
-        );
-      } else {
-        if (!encodedSwapPath) {
-          notification.error("Swap path could not be encoded.");
-          return;
-        }
-        txHash = await writeAndOpen(() =>
-          writeDca({
-            functionName: "createPosition",
-            args: [
-              totalUsdcWei,
-              amountPerSwapWei,
-              BigInt(intervalEpochs),
-              targetToken as AddressType,
-              encodedSwapPath,
-              BigInt(slippageBps),
-            ],
-          }),
-        );
-      }
+      const txHash = await writeAndOpen(() =>
+        writeDca({
+          functionName: "createPositionViaWETH",
+          args: [
+            totalUsdcWei,
+            amountPerSwapWei,
+            BigInt(intervalEpochs),
+            targetToken as AddressType,
+            usdcWethFee,
+            wethTargetFee,
+            BigInt(slippageBps),
+          ],
+        }),
+      );
       if (txHash) {
         notification.success("Position created! Check /positions for details.");
       }
@@ -227,12 +156,6 @@ const HomeInner = () => {
       notification.error(err?.shortMessage || err?.message || "Create failed");
     }
   };
-
-  // ---- Hop management ----
-  const addHop = () => setHops(prev => [...prev, { token: "", fee: 3000 }]);
-  const removeHop = (idx: number) => setHops(prev => prev.filter((_, i) => i !== idx));
-  const updateHop = (idx: number, patch: Partial<Hop>) =>
-    setHops(prev => prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)));
 
   return (
     <div className="flex flex-col items-center grow pt-10 pb-16 px-4">
@@ -255,32 +178,34 @@ const HomeInner = () => {
               <AddressInput value={targetToken} onChange={setTargetToken} placeholder="0x... target token address" />
             </label>
 
-            {/* Routing Mode */}
+            {/* Swap Path — always via WETH */}
             <div className="form-control w-full mt-4">
-              <div className="flex items-center justify-between">
-                <span className="label-text font-semibold">Swap Path</span>
-                <label className="label cursor-pointer gap-2">
-                  <span className="label-text text-sm">Route via WETH (recommended)</span>
-                  <input
-                    type="checkbox"
-                    className="toggle toggle-primary toggle-sm"
-                    checked={routeViaWeth}
-                    onChange={e => setRouteViaWeth(e.target.checked)}
-                  />
-                </label>
-              </div>
-
+              <span className="label-text font-semibold">Swap Path</span>
               <div className="bg-base-200 p-3 rounded-lg space-y-3 mt-1">
                 <div className="text-sm font-mono break-all">{pathPreview}</div>
 
-                {routeViaWeth ? (
-                  <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label className="form-control flex-1">
+                    <span className="label-text text-xs">USDC → WETH fee tier</span>
+                    <select
+                      className="select select-bordered select-sm"
+                      value={usdcWethFee}
+                      onChange={e => setUsdcWethFee(parseInt(e.target.value, 10))}
+                    >
+                      {FEE_TIERS.map(f => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {(!isAddress(targetToken) || targetToken.toLowerCase() !== WETH_ADDRESS.toLowerCase()) && (
                     <label className="form-control flex-1">
-                      <span className="label-text text-xs">USDC → WETH fee tier</span>
+                      <span className="label-text text-xs">WETH → Target fee tier</span>
                       <select
                         className="select select-bordered select-sm"
-                        value={usdcWethFee}
-                        onChange={e => setUsdcWethFee(parseInt(e.target.value, 10))}
+                        value={wethTargetFee}
+                        onChange={e => setWethTargetFee(parseInt(e.target.value, 10))}
                       >
                         {FEE_TIERS.map(f => (
                           <option key={f.value} value={f.value}>
@@ -289,81 +214,8 @@ const HomeInner = () => {
                         ))}
                       </select>
                     </label>
-                    {(!isAddress(targetToken) || targetToken.toLowerCase() !== WETH_ADDRESS.toLowerCase()) && (
-                      <label className="form-control flex-1">
-                        <span className="label-text text-xs">WETH → Target fee tier</span>
-                        <select
-                          className="select select-bordered select-sm"
-                          value={wethTargetFee}
-                          onChange={e => setWethTargetFee(parseInt(e.target.value, 10))}
-                        >
-                          {FEE_TIERS.map(f => (
-                            <option key={f.value} value={f.value}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {hops.map((hop, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch">
-                        <div className="flex-1">
-                          <AddressInput
-                            value={hop.token}
-                            onChange={v => updateHop(idx, { token: v })}
-                            placeholder={`Intermediate hop #${idx + 1} address`}
-                          />
-                        </div>
-                        <select
-                          className="select select-bordered"
-                          value={hop.fee}
-                          onChange={e => updateHop(idx, { fee: parseInt(e.target.value, 10) })}
-                        >
-                          {FEE_TIERS.map(f => (
-                            <option key={f.value} value={f.value}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-ghost"
-                          onClick={() => removeHop(idx)}
-                          disabled={false}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-
-                    <div className="flex flex-col sm:flex-row gap-2 items-stretch">
-                      <span className="text-sm self-center">Final fee tier → target:</span>
-                      <select
-                        className="select select-bordered select-sm"
-                        value={finalFee}
-                        onChange={e => setFinalFee(parseInt(e.target.value, 10))}
-                      >
-                        {FEE_TIERS.map(f => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" className="btn btn-sm btn-secondary" onClick={addHop}>
-                        + Add hop
-                      </button>
-                    </div>
-
-                    {encodedSwapPath && (
-                      <div className="text-xs font-mono break-all opacity-60">
-                        encoded: {encodedSwapPath.slice(0, 32)}…{encodedSwapPath.slice(-10)}
-                      </div>
-                    )}
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
@@ -470,11 +322,7 @@ const HomeInner = () => {
                   )}
                 </button>
               ) : (
-                <button
-                  className="btn btn-primary"
-                  disabled={isMining || formErrors.length > 0 || (!routeViaWeth && !encodedSwapPath)}
-                  onClick={handleCreate}
-                >
+                <button className="btn btn-primary" disabled={isMining || formErrors.length > 0} onClick={handleCreate}>
                   {isMining ? <span className="loading loading-spinner loading-sm" /> : "Create Position"}
                 </button>
               )}
